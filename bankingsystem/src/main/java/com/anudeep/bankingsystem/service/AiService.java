@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
@@ -39,7 +40,14 @@ public class AiService {
             Map.entry(Pattern.compile("gas|fuel|petrol|diesel", Pattern.CASE_INSENSITIVE), "FUEL")
     );
 
-    public CategorizeResponse categorizeTransaction(Transaction t) {
+    @Transactional
+public CategorizeResponse categorizeTransaction(Transaction t) {
+    if (t == null) {
+        logger.warn("Attempted to categorize null transaction");
+        return new CategorizeResponse("UNCATEGORIZED", 0.0);
+    }
+
+    try {
         logger.info("Categorizing transaction id: {}", t.getId());
         
         // Try external LLM model first
@@ -54,16 +62,27 @@ public class AiService {
             );
         }
 
-        // Save result
-        t.setCategory(resp.getCategory());
-        t.setCategoryConfidence(resp.getConfidence());
-        txnRepo.save(t);
-        
-        logger.info("Transaction {} categorized as: {} (confidence: {})", 
-                t.getId(), resp.getCategory(), resp.getConfidence());
+        // Only save if transaction has been persisted (has ID)
+        if (t.getId() != null && resp != null) {
+            t.setCategory(resp.getCategory());
+            t.setCategoryConfidence(resp.getConfidence());
+            txnRepo.save(t);
+            logger.info("Transaction {} categorized as: {} (confidence: {})", 
+                    t.getId(), resp.getCategory(), resp.getConfidence());
+        } else if (t.getId() == null) {
+            logger.debug("Transaction not persisted yet, skipping categorization save");
+            // For unpersisted transactions (like in /api/ai/predict), just return the response
+        }
 
-        return resp;
+        return resp != null ? resp : new CategorizeResponse("UNCATEGORIZED", 0.0);
+
+    } catch (Exception e) {
+        // Catch ALL exceptions to prevent propagation
+        logger.error("Error categorizing transaction {}: {}", t.getId(), e.getMessage(), e);
+        // Return default response instead of throwing
+        return new CategorizeResponse("UNCATEGORIZED", 0.0);
     }
+}
 
     private CategorizeResponse tryExternalModel(Transaction t) {
         if (aiApiUrl == null || aiApiUrl.isBlank()) {
@@ -86,8 +105,7 @@ public class AiService {
 
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
 
-            ResponseEntity<Map> res =
-                    restTemplate.postForEntity(aiApiUrl, request, Map.class);
+            ResponseEntity<Map> res = restTemplate.postForEntity(aiApiUrl, request, Map.class);
 
             if (!res.getStatusCode().is2xxSuccessful() || res.getBody() == null) {
                 logger.warn("External AI model returned non-2xx status: {}", res.getStatusCode());
@@ -95,7 +113,6 @@ public class AiService {
             }
 
             Map body = res.getBody();
-
             String category = Objects.toString(body.get("category"), "UNCATEGORIZED");
             double confidence = Double.parseDouble(Objects.toString(body.get("confidence"), "0.5"));
 

@@ -1,0 +1,69 @@
+/*
+  The App container now uses a standard font and clean background.
+  We are removing the 'text-align: center' from the main container
+  to allow for a more flexible, left-aligned, professional layout.
+*/
+.App {
+  font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; /* A standard, professional font stack */
+  background-color: #f4f7fa; /* Very light gray background for a clean look */
+  color: #333333; /* Dark gray for main text, highly readable */
+  min-height: 100vh;
+}
+
+/*
+  The logo is now a static element, positioned cleanly in a header.
+  We remove the default size and pointer-events.
+*/
+.App-logo {
+  height: 50px; /* A smaller, more manageable logo size */
+  margin-right: 20px;
+}
+
+/*
+  The Header now acts as a dedicated Navigation Bar (NavBar).
+  It uses a darker color for contrast and a subtle shadow for depth.
+*/
+.App-header {
+  background-color: #ffffff; /* White background for the header */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08); /* Subtle shadow for a 'floating' effect */
+  padding: 15px 30px; /* Good vertical and horizontal padding */
+  min-height: auto; /* Remove minimum height */
+  display: flex;
+  flex-direction: row; /* Layout items horizontally */
+  align-items: center;
+  justify-content: space-between; /* Space out logo/nav and other elements */
+  color: #333333;
+  font-size: 1.2rem;
+}
+
+/*
+  A dedicated class for the main content area, outside the header.
+  This gives content space and centers it on the screen.
+*/
+.App-content {
+  max-width: 1200px; /* Constrain content width */
+  margin: 40px auto; /* Center the content area */
+  padding: 20px;
+  text-align: left; /* Default to left-aligned text */
+}
+
+/*
+  A professional color for links, moving away from bright blue.
+*/
+.App-link {
+  color: #007bff; /* A standard, professional blue */
+  text-decoration: none; /* Remove underline */
+  transition: color 0.3s ease;
+}
+
+.App-link:hover {
+  color: #0056b3; /* Darker on hover */
+  text-decoration: underline; /* Add underline on hover for clarity */
+}
+
+/*
+  Remove the media query for reduced motion and the
+  keyframes since the spinning animation is no longer professional.
+*/
+/* @media (prefers-reduced-motion: no-preference) */
+/* @keyframes App-logo-spin */

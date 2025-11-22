@@ -72,4 +72,11 @@ public class AccountController {
         service.delete(userId, id);
         return ResponseEntity.noContent().build();
     }
+
+    // NEW: Get all accounts for transfer recipients
+    @GetMapping("/all-for-transfer")
+    @Operation(summary = "Get all accounts for transfer", description = "Get all accounts in system for transfer recipients")
+    public ResponseEntity<List<AccountResponse>> getAllAccountsForTransfer() {
+        return ResponseEntity.ok(service.getAllAccountsForTransfer());
+    }
 }

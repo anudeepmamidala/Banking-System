@@ -33,27 +33,33 @@ public class TransactionService {
     public TransactionResponse deposit(Long userId, TransactionRequest req) {
         logger.info("Processing deposit for user: {} amount: {}", userId, req.getAmount());
         
+        // Validate user exists
         AppUser user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException("User not found"));
 
+        // Validate account exists
         Account acc = accountRepo.findById(req.getFromAccountId())
                 .orElseThrow(() -> new ApiException("Account not found"));
 
-        if (!acc.getUser().getId().equals(userId)) {
+        // Verify user owns this account
+        if (acc.getUser() == null || !acc.getUser().getId().equals(userId)) {
             logger.warn("Unauthorized deposit attempt for account {} by user: {}", req.getFromAccountId(), userId);
             throw new ApiException("Not your account");
         }
 
         BigDecimal amount = req.getAmount();
 
-        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+        // Validate amount
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             logger.warn("Invalid deposit amount: {}", amount);
             throw new ApiException("Amount must be positive");
         }
 
+        // Update account balance
         acc.setBalance(acc.getBalance().add(amount));
         accountRepo.save(acc);
 
+        // Create transaction
         Transaction t = Transaction.builder()
                 .account(acc)
                 .user(user)
@@ -63,6 +69,8 @@ public class TransactionService {
                 .build();
 
         txnRepo.save(t);
+        
+        // Categorize asynchronously (won't throw exceptions)
         aiService.categorizeTransaction(t);
         
         logger.info("Deposit completed successfully for user: {} transaction id: {}", userId, t.getId());
@@ -74,33 +82,40 @@ public class TransactionService {
     public TransactionResponse withdraw(Long userId, TransactionRequest req) {
         logger.info("Processing withdrawal for user: {} amount: {}", userId, req.getAmount());
         
+        // Validate user exists
         AppUser user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException("User not found"));
 
+        // Validate account exists
         Account acc = accountRepo.findById(req.getFromAccountId())
                 .orElseThrow(() -> new ApiException("Account not found"));
 
-        if (!acc.getUser().getId().equals(userId)) {
+        // Verify user owns this account
+        if (acc.getUser() == null || !acc.getUser().getId().equals(userId)) {
             logger.warn("Unauthorized withdrawal attempt for account {} by user: {}", req.getFromAccountId(), userId);
             throw new ApiException("Not your account");
         }
 
         BigDecimal amount = req.getAmount();
 
-        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+        // Validate amount
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             logger.warn("Invalid withdrawal amount: {}", amount);
             throw new ApiException("Amount must be positive");
         }
 
+        // Check sufficient balance
         if (acc.getBalance().compareTo(amount) < 0) {
             logger.warn("Insufficient balance for withdrawal. Account: {} Balance: {} Amount: {}", 
                     req.getFromAccountId(), acc.getBalance(), amount);
             throw new ApiException("Insufficient balance");
         }
 
+        // Update account balance
         acc.setBalance(acc.getBalance().subtract(amount));
         accountRepo.save(acc);
 
+        // Create transaction
         Transaction t = Transaction.builder()
                 .account(acc)
                 .user(user)
@@ -110,6 +125,8 @@ public class TransactionService {
                 .build();
 
         txnRepo.save(t);
+        
+        // Categorize asynchronously (won't throw exceptions)
         aiService.categorizeTransaction(t);
         
         logger.info("Withdrawal completed successfully for user: {} transaction id: {}", userId, t.getId());
@@ -125,43 +142,58 @@ public class TransactionService {
         Long fromId = req.getFromAccountId();
         Long toId = req.getToAccountId();
 
+        // FIX #1: Add null check for toAccountId
+        if (toId == null) {
+            logger.warn("To account ID is null for user: {}", userId);
+            throw new ApiException("To account ID is required for transfer");
+        }
+
+        // Check if trying to transfer to same account
         if (fromId.equals(toId)) {
             logger.warn("Cannot transfer to same account for user: {}", userId);
             throw new ApiException("Cannot transfer to same account");
         }
 
+        // Validate user exists
         AppUser user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException("User not found"));
 
+        // Validate from account exists
         Account from = accountRepo.findById(fromId)
                 .orElseThrow(() -> new ApiException("From account not found"));
 
-        if (!from.getUser().getId().equals(userId)) {
+        // Verify user owns from account
+        if (from.getUser() == null || !from.getUser().getId().equals(userId)) {
             logger.warn("Unauthorized transfer attempt for account {} by user: {}", fromId, userId);
             throw new ApiException("Not your account");
         }
 
+        // Validate to account exists
         Account to = accountRepo.findById(toId)
                 .orElseThrow(() -> new ApiException("To account not found"));
 
         BigDecimal amount = req.getAmount();
 
-        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+        // Validate amount
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             logger.warn("Invalid transfer amount: {}", amount);
             throw new ApiException("Amount must be positive");
         }
 
+        // Check sufficient balance
         if (from.getBalance().compareTo(amount) < 0) {
             logger.warn("Insufficient balance for transfer. From Account: {} Balance: {} Amount: {}", 
                     fromId, from.getBalance(), amount);
             throw new ApiException("Insufficient balance");
         }
 
+        // Update both account balances
         from.setBalance(from.getBalance().subtract(amount));
         to.setBalance(to.getBalance().add(amount));
         accountRepo.save(from);
         accountRepo.save(to);
 
+        // Create outgoing transaction
         Transaction out = Transaction.builder()
                 .account(from)
                 .relatedAccount(to)
@@ -171,6 +203,7 @@ public class TransactionService {
                 .description(req.getDescription())
                 .build();
 
+        // Create incoming transaction
         Transaction in = Transaction.builder()
                 .account(to)
                 .relatedAccount(from)
@@ -183,6 +216,7 @@ public class TransactionService {
         txnRepo.save(out);
         txnRepo.save(in);
 
+        // Categorize both transactions asynchronously (won't throw exceptions)
         aiService.categorizeTransaction(out);
         aiService.categorizeTransaction(in);
         
@@ -200,7 +234,7 @@ public class TransactionService {
                 .toList();
     }
 
-    // NEW: Pagination
+    // Pagination
     public PaginatedResponse<TransactionResponse> listForUserPaginated(Long userId, int page, int size) {
         logger.info("Fetching paginated transactions for user: {} page: {} size: {}", userId, page, size);
         
@@ -220,7 +254,7 @@ public class TransactionService {
                 .build();
     }
 
-    // NEW: Filtering
+    // Filtering
     public List<TransactionResponse> filterTransactions(Long userId, TransactionFilterRequest filter) {
         logger.info("Filtering transactions for user: {}", userId);
         
@@ -261,9 +295,14 @@ public class TransactionService {
         return transactions.stream().map(this::toResponse).toList();
     }
 
-    // NEW: Search
+    // Search
     public List<TransactionResponse> searchTransactions(Long userId, String query) {
         logger.info("Searching transactions for user: {} with query: {}", userId, query);
+        
+        if (query == null || query.isBlank()) {
+            logger.warn("Empty search query for user: {}", userId);
+            return List.of();
+        }
         
         return txnRepo.findByUserIdAndDescriptionContaining(userId, query)
                 .stream()
@@ -271,9 +310,14 @@ public class TransactionService {
                 .toList();
     }
 
-    // NEW: Get by category
+    // Get by category
     public List<TransactionResponse> getTransactionsByCategory(Long userId, String category) {
         logger.info("Fetching transactions by category: {} for user: {}", category, userId);
+        
+        if (category == null || category.isBlank()) {
+            logger.warn("Empty category for user: {}", userId);
+            return List.of();
+        }
         
         return txnRepo.findByUserIdAndCategory(userId, category)
                 .stream()
@@ -281,9 +325,14 @@ public class TransactionService {
                 .toList();
     }
 
-    // NEW: Get by type
+    // Get by type
     public List<TransactionResponse> getTransactionsByType(Long userId, String type) {
         logger.info("Fetching transactions by type: {} for user: {}", type, userId);
+        
+        if (type == null || type.isBlank()) {
+            logger.warn("Empty type for user: {}", userId);
+            return List.of();
+        }
         
         return txnRepo.findByUserIdAndType(userId, type)
                 .stream()
@@ -291,9 +340,14 @@ public class TransactionService {
                 .toList();
     }
 
-    // NEW: Get by date range
+    // Get by date range
     public List<TransactionResponse> getTransactionsByDateRange(Long userId, LocalDateTime startDate, LocalDateTime endDate) {
         logger.info("Fetching transactions between {} and {} for user: {}", startDate, endDate, userId);
+        
+        if (startDate == null || endDate == null) {
+            logger.warn("Invalid date range for user: {}", userId);
+            return List.of();
+        }
         
         return txnRepo.findByUserIdAndDateRange(userId, startDate, endDate)
                 .stream()
@@ -301,17 +355,44 @@ public class TransactionService {
                 .toList();
     }
 
-    // NEW: Get transaction details with related account info
+    // Get transaction details with related account info
     public TransactionDetailResponse getTransactionDetails(Long userId, Long transactionId) {
         logger.info("Fetching transaction details for user: {} transaction: {}", userId, transactionId);
         
         Transaction t = txnRepo.findById(transactionId)
                 .orElseThrow(() -> new ApiException("Transaction not found"));
 
-        if (!t.getUser().getId().equals(userId)) {
+        if (t.getUser() == null || !t.getUser().getId().equals(userId)) {
             logger.warn("Unauthorized access to transaction {} by user: {}", transactionId, userId);
             throw new ApiException("Unauthorized: Transaction does not belong to you");
         }
+
+        // FIX #2: Handle null account gracefully
+        if (t.getAccount() == null) {
+            logger.error("Transaction {} has null account", transactionId);
+            throw new ApiException("Transaction has invalid account reference");
+        }
+
+        // --- START OF NEW LOGIC ---
+        String recipientUserName = null;
+        Account relatedAccount = t.getRelatedAccount();
+
+        // Check if there is a related account (i.e., it's a transfer)
+        if (relatedAccount != null) {
+            // Check if the transaction type implies a transfer to a known entity
+            if ("TRANSFER_OUT".equals(t.getType()) || "TRANSFER_IN".equals(t.getType())) {
+                try {
+                    // Fetch the User Name using the AccountRepository method
+                    recipientUserName = accountRepo.findUserNameByAccountId(relatedAccount.getId());
+                } catch (Exception e) {
+                    logger.error("Could not find User Name for related account ID: {}", relatedAccount.getId(), e);
+                    // Fallback to null or a default message
+                    recipientUserName = "Unknown User"; 
+                }
+            }
+        }
+        // --- END OF NEW LOGIC ---
+
 
         AccountResponse accountResp = new AccountResponse(
                 t.getAccount().getId(),
@@ -321,12 +402,12 @@ public class TransactionService {
         );
 
         AccountResponse relatedAccountResp = null;
-        if (t.getRelatedAccount() != null) {
+        if (relatedAccount != null) {
             relatedAccountResp = new AccountResponse(
-                    t.getRelatedAccount().getId(),
-                    t.getRelatedAccount().getName(),
-                    t.getRelatedAccount().getType(),
-                    t.getRelatedAccount().getBalance()
+                    relatedAccount.getId(),
+                    relatedAccount.getName(),
+                    relatedAccount.getType(),
+                    relatedAccount.getBalance()
             );
         }
 
@@ -334,10 +415,13 @@ public class TransactionService {
 
         logger.info("Transaction details retrieved successfully for transaction: {}", transactionId);
 
+        // **UPDATED DTO CONSTRUCTOR** to include the new field
         return new TransactionDetailResponse(
                 t.getId(),
                 accountResp,
                 relatedAccountResp,
+                // NEW FIELD
+                recipientUserName, 
                 t.getAmount(),
                 t.getType(),
                 t.getCategory(),
@@ -349,6 +433,12 @@ public class TransactionService {
     }
 
     private TransactionResponse toResponse(Transaction t) {
+        // FIX #3: Handle null account gracefully
+        if (t == null || t.getAccount() == null) {
+            logger.error("Invalid transaction or account reference");
+            return null;
+        }
+
         return new TransactionResponse(
                 t.getId(),
                 t.getAccount().getId(),

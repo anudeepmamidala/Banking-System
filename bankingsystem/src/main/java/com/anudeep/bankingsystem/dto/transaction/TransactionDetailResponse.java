@@ -13,8 +13,14 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class TransactionDetailResponse {
     private Long id;
-    private AccountResponse account;
-    private AccountResponse relatedAccount;
+    private AccountResponse account; // The user's own account involved
+    
+    // Original recipient account details
+    private AccountResponse relatedAccount; 
+    
+    // **NEW FIELD:** To explicitly carry the name of the recipient's user for transfers
+    private String recipientUserName; 
+
     private BigDecimal amount;
     private String type;
     private String category;

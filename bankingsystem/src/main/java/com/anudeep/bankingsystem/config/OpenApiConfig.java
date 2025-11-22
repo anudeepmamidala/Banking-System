@@ -23,7 +23,7 @@ public class OpenApiConfig {
                                 "user profiles, analytics, and AI-powered categorization")
                         .contact(new Contact()
                                 .name("Anudeep")
-                                .url("https://github.com/anudeep"))
+                                .url("https://github.com/anudeepmamidala"))
                         .license(new License()
                                 .name("Apache 2.0")
                                 .url("https://www.apache.org/licenses/LICENSE-2.0.html")))
